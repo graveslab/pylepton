@@ -127,7 +127,7 @@ class Lepton(object):
         raise IOError("can't send {0} spi messages ({1})".format(60, ret))
       messages -= count
 
-  def capture(self, data_buffer = None, log_time = False, debug_print = False, retry_reset = True):
+  def capture(self, data_buffer = None, log_time = False, debug_print = False, retry_reset = True, retry_limit = 1):
     """Capture a frame of data.
 
     Captures 80x60 uint16 array of non-normalized (raw 12-bit) data. Returns that frame and a frame_id (which
@@ -148,16 +148,20 @@ class Lepton(object):
       data_buffer = np.ndarray((Lepton.ROWS, Lepton.COLS, 1), dtype=np.uint16)
     elif data_buffer.ndim < 2 or data_buffer.shape[0] < Lepton.ROWS or data_buffer.shape[1] < Lepton.COLS or data_buffer.itemsize < 2:
       raise Exception("Provided input array not large enough")
-
+    
+    retries = 0
     while True:
       Lepton.capture_segment(self.__handle, self.__xmit_buf, self.__msg_size, self.__capture_buf[0])
       if retry_reset and (self.__capture_buf[20, 0] & 0xFF0F) != 0x1400: # make sure that this is a well-formed frame, should find line 20 here
         # Leave chip select deasserted for at least 185 ms to reset
         if debug_print:
           print("Garbage frame number reset waiting...")
+        if retries >= retry_limit:
+          return None,None
         time.sleep(0.185)
       else:
         break
+      retries += 1
 
     self.__capture_buf.byteswap(True)
     data_buffer[:,:] = self.__capture_buf[:,2:]
